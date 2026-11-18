@@ -1,0 +1,6 @@
+{
+  "name": "PawCare — Trusted Pet Care Platform",
+  "description": "Trusted pet-care booking platform in Dehradun connecting pet owners with carefully screened caregivers for sitting, feeding, walking, and everyday care.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,668 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 1. Global Safety Net (Default Deny)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // 2. Global Hardened Primitives
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    function isBootstrappedAdmin() {
+      return isVerifiedUser() && request.auth.token.email == 'sonali439603@gmail.com';
+    }
+
+    function isAdmin() {
+      return isBootstrappedAdmin() || (
+        isVerifiedUser() && exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    // 3. Entity Validation Blueprints
+    function isValidAdminRegistry(data) {
+      return data.keys().hasAll(['uid', 'email', 'grantedBy', 'createdAt'])
+        && data.keys().hasOnly(['uid', 'email', 'grantedBy', 'createdAt'])
+        && isValidId(data.uid)
+        && data.email is string && data.email.size() >= 3 && data.email.size() <= 254
+        && data.grantedBy is string && data.grantedBy.size() >= 1 && data.grantedBy.size() <= 128
+        && data.createdAt is timestamp;
+    }
+
+    function isValidUserProfile(data, userId) {
+      return data.keys().hasAll(['uid', 'fullName', 'email', 'city', 'role', 'status', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['uid', 'fullName', 'email', 'phone', 'city', 'photoUrl', 'role', 'status', 'createdAt', 'updatedAt'])
+        && data.uid == userId
+        && isValidId(data.uid)
+        && data.fullName is string && data.fullName.size() >= 1 && data.fullName.size() <= 120
+        && data.email is string && data.email.size() >= 3 && data.email.size() <= 254
+        && (!('phone' in data) || (data.phone is string && data.phone.size() <= 24))
+        && data.city is string && data.city.size() >= 1 && data.city.size() <= 80
+        && (!('photoUrl' in data) || (data.photoUrl is string && data.photoUrl.size() <= 200000))
+        && data.role in ['customer', 'caregiver', 'admin']
+        && data.status in ['active', 'suspended']
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidPet(data) {
+      return data.keys().hasAll(['ownerId', 'name', 'animalType', 'age', 'size', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['ownerId', 'name', 'animalType', 'breed', 'age', 'size', 'photoUrl', 'behaviorNotes', 'feedingInstructions', 'specialCareInstructions', 'medicationNotes', 'createdAt', 'updatedAt'])
+        && isValidId(data.ownerId)
+        && data.name is string && data.name.size() >= 1 && data.name.size() <= 80
+        && data.animalType in ['Dog', 'Cat', 'Bird', 'Rabbit', 'Other']
+        && (!('breed' in data) || (data.breed is string && data.breed.size() <= 80))
+        && data.age is string && data.age.size() >= 1 && data.age.size() <= 40
+        && data.size in ['Small', 'Medium', 'Large', 'Extra Large']
+        && (!('photoUrl' in data) || (data.photoUrl is string && data.photoUrl.size() <= 200000))
+        && (!('behaviorNotes' in data) || (data.behaviorNotes is string && data.behaviorNotes.size() <= 1000))
+        && (!('feedingInstructions' in data) || (data.feedingInstructions is string && data.feedingInstructions.size() <= 1000))
+        && (!('specialCareInstructions' in data) || (data.specialCareInstructions is string && data.specialCareInstructions.size() <= 1000))
+        && (!('medicationNotes' in data) || (data.medicationNotes is string && data.medicationNotes.size() <= 1000))
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidCaregiverApplication(data, appId) {
+      return data.keys().hasAll(['uid', 'fullName', 'email', 'phone', 'city', 'experienceSummary', 'petTypesHandled', 'servicesOffered', 'availabilitySummary', 'intro', 'status', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['uid', 'fullName', 'email', 'phone', 'city', 'photoUrl', 'experienceSummary', 'petTypesHandled', 'servicesOffered', 'availabilitySummary', 'intro', 'status', 'rejectionReason', 'reviewedBy', 'createdAt', 'updatedAt'])
+        && data.uid == appId
+        && isValidId(data.uid)
+        && data.fullName is string && data.fullName.size() >= 2 && data.fullName.size() <= 120
+        && data.email is string && data.email.size() >= 3 && data.email.size() <= 254
+        && data.phone is string && data.phone.size() >= 6 && data.phone.size() <= 24
+        && data.city is string && data.city.size() >= 2 && data.city.size() <= 80
+        && (!('photoUrl' in data) || (data.photoUrl is string && data.photoUrl.size() <= 200000))
+        && data.experienceSummary is string && data.experienceSummary.size() >= 10 && data.experienceSummary.size() <= 1500
+        && data.petTypesHandled is list && data.petTypesHandled.size() >= 1 && data.petTypesHandled.size() <= 10 && data.petTypesHandled[0] is string
+        && data.servicesOffered is list && data.servicesOffered.size() >= 1 && data.servicesOffered.size() <= 10 && data.servicesOffered[0] is string
+        && data.availabilitySummary is string && data.availabilitySummary.size() >= 2 && data.availabilitySummary.size() <= 500
+        && data.intro is string && data.intro.size() >= 10 && data.intro.size() <= 1500
+        && data.status in ['submitted', 'under_review', 'approved', 'rejected', 'suspended']
+        && (!('rejectionReason' in data) || (data.rejectionReason is string && data.rejectionReason.size() <= 600))
+        && (!('reviewedBy' in data) || (data.reviewedBy is string && data.reviewedBy.size() <= 128))
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidCaregiverPublic(data, caregiverId) {
+      return data.keys().hasAll(['uid', 'displayName', 'city', 'experienceSummary', 'petTypesHandled', 'servicesOffered', 'availabilitySlots', 'isAvailable', 'intro', 'verificationStatus', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['uid', 'displayName', 'city', 'photoUrl', 'experienceSummary', 'petTypesHandled', 'servicesOffered', 'availabilitySlots', 'unavailableDates', 'isAvailable', 'intro', 'verificationStatus', 'createdAt', 'updatedAt'])
+        && data.uid == caregiverId
+        && isValidId(data.uid)
+        && data.displayName is string && data.displayName.size() >= 2 && data.displayName.size() <= 120
+        && data.city is string && data.city.size() >= 2 && data.city.size() <= 80
+        && (!('photoUrl' in data) || (data.photoUrl is string && data.photoUrl.size() <= 200000))
+        && data.experienceSummary is string && data.experienceSummary.size() >= 5 && data.experienceSummary.size() <= 1500
+        && data.petTypesHandled is list && data.petTypesHandled.size() >= 1 && data.petTypesHandled.size() <= 10 && data.petTypesHandled[0] is string
+        && data.servicesOffered is list && data.servicesOffered.size() >= 1 && data.servicesOffered.size() <= 10 && data.servicesOffered[0] is string
+        && data.availabilitySlots is list && data.availabilitySlots.size() <= 21 && (data.availabilitySlots.size() == 0 || data.availabilitySlots[0] is string)
+        && (!('unavailableDates' in data) || (data.unavailableDates is list && data.unavailableDates.size() <= 30 && (data.unavailableDates.size() == 0 || data.unavailableDates[0] is string)))
+        && data.isAvailable is bool
+        && data.intro is string && data.intro.size() >= 5 && data.intro.size() <= 1500
+        && data.verificationStatus in ['approved', 'suspended']
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidService(data) {
+      return data.keys().hasAll(['slug', 'name', 'shortDescription', 'description', 'durationLabel', 'durationMinutes', 'customerPriceInr', 'active', 'updatedAt'])
+        && data.keys().hasOnly(['slug', 'name', 'shortDescription', 'description', 'durationLabel', 'durationMinutes', 'customerPriceInr', 'active', 'imageUrl', 'updatedAt'])
+        && isValidId(data.slug)
+        && data.name is string && data.name.size() >= 2 && data.name.size() <= 100
+        && data.shortDescription is string && data.shortDescription.size() >= 5 && data.shortDescription.size() <= 240
+        && data.description is string && data.description.size() >= 10 && data.description.size() <= 1500
+        && data.durationLabel is string && data.durationLabel.size() >= 2 && data.durationLabel.size() <= 60
+        && data.durationMinutes is int && data.durationMinutes >= 10 && data.durationMinutes <= 1440
+        && data.customerPriceInr is number && data.customerPriceInr >= 0 && data.customerPriceInr <= 100000
+        && data.active is bool
+        && (!('imageUrl' in data) || (data.imageUrl is string && data.imageUrl.size() <= 500))
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidInternalPricing(data) {
+      return data.keys().hasAll(['serviceId', 'serviceName', 'customerPriceInr', 'variableCostInr', 'platformCommissionInr', 'updatedBy', 'updatedAt'])
+        && data.keys().hasOnly(['serviceId', 'serviceName', 'customerPriceInr', 'variableCostInr', 'platformCommissionInr', 'notes', 'updatedBy', 'updatedAt'])
+        && isValidId(data.serviceId)
+        && data.serviceName is string && data.serviceName.size() >= 2 && data.serviceName.size() <= 100
+        && data.customerPriceInr is number && data.customerPriceInr >= 0 && data.customerPriceInr <= 100000
+        && data.variableCostInr is number && data.variableCostInr >= 0 && data.variableCostInr <= 100000
+        && data.platformCommissionInr is number && data.platformCommissionInr >= -100000 && data.platformCommissionInr <= 100000
+        && (!('notes' in data) || (data.notes is string && data.notes.size() <= 500))
+        && data.updatedBy is string && data.updatedBy.size() >= 1 && data.updatedBy.size() <= 128
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidPricingHistory(data) {
+      return data.keys().hasAll(['serviceId', 'serviceName', 'previousCustomerPriceInr', 'newCustomerPriceInr', 'newVariableCostInr', 'newCommissionInr', 'changedBy', 'changedAt'])
+        && data.keys().hasOnly(['serviceId', 'serviceName', 'previousCustomerPriceInr', 'newCustomerPriceInr', 'newVariableCostInr', 'newCommissionInr', 'changedBy', 'changedAt'])
+        && isValidId(data.serviceId)
+        && data.serviceName is string && data.serviceName.size() >= 2 && data.serviceName.size() <= 100
+        && data.previousCustomerPriceInr is number
+        && data.newCustomerPriceInr is number
+        && data.newVariableCostInr is number
+        && data.newCommissionInr is number
+        && data.changedBy is string && data.changedBy.size() >= 1 && data.changedBy.size() <= 128
+        && data.changedAt is timestamp;
+    }
+
+    function isValidBooking(data) {
+      return data.keys().hasAll(['customerId', 'customerName', 'petId', 'petName', 'petAnimalType', 'serviceId', 'serviceName', 'requestedDate', 'requestedTime', 'durationMinutes', 'serviceLocation', 'city', 'assignedCaregiverId', 'assignedCaregiverName', 'priceSnapshotInr', 'status', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['customerId', 'customerName', 'petId', 'petName', 'petAnimalType', 'petCareSummary', 'serviceId', 'serviceName', 'requestedDate', 'requestedTime', 'durationMinutes', 'serviceLocation', 'city', 'customerInstructions', 'assignedCaregiverId', 'assignedCaregiverName', 'priceSnapshotInr', 'status', 'cancellationReason', 'createdAt', 'updatedAt'])
+        && isValidId(data.customerId)
+        && data.customerName is string && data.customerName.size() >= 1 && data.customerName.size() <= 120
+        && isValidId(data.petId)
+        && data.petName is string && data.petName.size() >= 1 && data.petName.size() <= 80
+        && data.petAnimalType is string && data.petAnimalType.size() >= 1 && data.petAnimalType.size() <= 40
+        && (!('petCareSummary' in data) || (data.petCareSummary is string && data.petCareSummary.size() <= 1200))
+        && isValidId(data.serviceId)
+        && data.serviceName is string && data.serviceName.size() >= 2 && data.serviceName.size() <= 100
+        && data.requestedDate is string && data.requestedDate.size() >= 8 && data.requestedDate.size() <= 20
+        && data.requestedTime is string && data.requestedTime.size() >= 2 && data.requestedTime.size() <= 40
+        && data.durationMinutes is int && data.durationMinutes >= 10 && data.durationMinutes <= 1440
+        && data.serviceLocation is string && data.serviceLocation.size() >= 4 && data.serviceLocation.size() <= 300
+        && data.city is string && data.city.size() >= 2 && data.city.size() <= 80
+        && (!('customerInstructions' in data) || (data.customerInstructions is string && data.customerInstructions.size() <= 1500))
+        && data.assignedCaregiverId is string && data.assignedCaregiverId.size() <= 128
+        && data.assignedCaregiverName is string && data.assignedCaregiverName.size() <= 120
+        && data.priceSnapshotInr is number && data.priceSnapshotInr >= 0 && data.priceSnapshotInr <= 100000
+        && data.status in ['pending', 'accepted', 'rejected', 'confirmed', 'in_progress', 'completed', 'cancelled']
+        && (!('cancellationReason' in data) || (data.cancellationReason is string && data.cancellationReason.size() <= 500))
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidConversation(data) {
+      return data.keys().hasAll(['type', 'customerId', 'customerName', 'assignedCaregiverId', 'bookingId', 'subject', 'status', 'lastMessagePreview', 'lastMessageAt', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['type', 'customerId', 'customerName', 'assignedCaregiverId', 'bookingId', 'subject', 'status', 'lastMessagePreview', 'lastMessageAt', 'createdAt', 'updatedAt'])
+        && data.type in ['support', 'booking_chat']
+        && isValidId(data.customerId)
+        && data.customerName is string && data.customerName.size() >= 1 && data.customerName.size() <= 120
+        && data.assignedCaregiverId is string && data.assignedCaregiverId.size() <= 128
+        && data.bookingId is string && data.bookingId.size() <= 128
+        && data.subject is string && data.subject.size() >= 2 && data.subject.size() <= 160
+        && data.status in ['open', 'pending', 'resolved']
+        && data.lastMessagePreview is string && data.lastMessagePreview.size() <= 200
+        && data.lastMessageAt is timestamp
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidMessage(data) {
+      return data.keys().hasAll(['senderId', 'senderName', 'senderRole', 'text', 'createdAt'])
+        && data.keys().hasOnly(['senderId', 'senderName', 'senderRole', 'text', 'createdAt'])
+        && isValidId(data.senderId)
+        && data.senderName is string && data.senderName.size() >= 1 && data.senderName.size() <= 120
+        && data.senderRole in ['customer', 'caregiver', 'admin']
+        && data.text is string && data.text.size() >= 1 && data.text.size() <= 2000
+        && data.createdAt is timestamp;
+    }
+
+    function isValidNotification(data) {
+      return data.keys().hasAll(['userId', 'title', 'body', 'category', 'read', 'createdAt'])
+        && data.keys().hasOnly(['userId', 'title', 'body', 'category', 'relatedId', 'read', 'createdAt'])
+        && isValidId(data.userId)
+        && data.title is string && data.title.size() >= 2 && data.title.size() <= 140
+        && data.body is string && data.body.size() >= 2 && data.body.size() <= 500
+        && data.category in ['booking', 'caregiver', 'support', 'account']
+        && (!('relatedId' in data) || (data.relatedId is string && data.relatedId.size() <= 128))
+        && data.read is bool
+        && data.createdAt is timestamp;
+    }
+
+    function isValidWebsiteContent(data, sectionId) {
+      return data.keys().hasAll(['sectionKey', 'updatedAt'])
+        && data.keys().hasOnly(['sectionKey', 'heroHeadline', 'heroSubtext', 'announcementText', 'announcementActive', 'dehradunIntro', 'contactEmail', 'contactPhone', 'contactAddress', 'serviceHours', 'faqItems', 'updatedAt'])
+        && data.sectionKey == sectionId
+        && isValidId(data.sectionKey)
+        && (!('heroHeadline' in data) || (data.heroHeadline is string && data.heroHeadline.size() <= 200))
+        && (!('heroSubtext' in data) || (data.heroSubtext is string && data.heroSubtext.size() <= 600))
+        && (!('announcementText' in data) || (data.announcementText is string && data.announcementText.size() <= 300))
+        && (!('announcementActive' in data) || data.announcementActive is bool)
+        && (!('dehradunIntro' in data) || (data.dehradunIntro is string && data.dehradunIntro.size() <= 800))
+        && (!('contactEmail' in data) || (data.contactEmail is string && data.contactEmail.size() <= 254))
+        && (!('contactPhone' in data) || (data.contactPhone is string && data.contactPhone.size() <= 40))
+        && (!('contactAddress' in data) || (data.contactAddress is string && data.contactAddress.size() <= 240))
+        && (!('serviceHours' in data) || (data.serviceHours is string && data.serviceHours.size() <= 120))
+        && (!('faqItems' in data) || (data.faqItems is list && data.faqItems.size() <= 20))
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidAuditLog(data) {
+      return data.keys().hasAll(['actorId', 'actorEmail', 'action', 'targetCollection', 'targetId', 'summary', 'createdAt'])
+        && data.keys().hasOnly(['actorId', 'actorEmail', 'action', 'targetCollection', 'targetId', 'summary', 'createdAt'])
+        && isValidId(data.actorId)
+        && data.actorEmail is string && data.actorEmail.size() <= 254
+        && data.action is string && data.action.size() >= 2 && data.action.size() <= 80
+        && data.targetCollection is string && data.targetCollection.size() >= 2 && data.targetCollection.size() <= 64
+        && data.targetId is string && data.targetId.size() >= 1 && data.targetId.size() <= 128
+        && data.summary is string && data.summary.size() >= 2 && data.summary.size() <= 500
+        && data.createdAt is timestamp;
+    }
+
+    function isValidGameSession(data) {
+      return data.keys().hasAll(['uid', 'gameId', 'score', 'pointsAwarded', 'durationSec', 'won', 'createdAt'])
+        && data.keys().hasOnly(['uid', 'gameId', 'score', 'pointsAwarded', 'durationSec', 'difficulty', 'won', 'createdAt'])
+        && isValidId(data.uid)
+        && data.gameId in ['paw_runner', 'paw_memory', 'treat_catcher']
+        && data.score is int && data.score >= 0 && data.score <= 50000
+        && data.pointsAwarded is int && data.pointsAwarded >= 0 && data.pointsAwarded <= 150
+        && data.durationSec is int && data.durationSec >= 3 && data.durationSec <= 3600
+        && (!('difficulty' in data) || (data.difficulty is string && data.difficulty.size() <= 32))
+        && data.won is bool
+        && data.createdAt is timestamp;
+    }
+
+    function isValidRewardProfile(data, userId) {
+      return data.keys().hasAll(['uid', 'totalPoints', 'gamesPlayed', 'bestRunnerScore', 'bestMemoryScore', 'bestCatcherScore', 'achievements', 'streakDays', 'lastPlayedDate', 'updatedAt'])
+        && data.keys().hasOnly(['uid', 'totalPoints', 'gamesPlayed', 'bestRunnerScore', 'bestMemoryScore', 'bestCatcherScore', 'achievements', 'streakDays', 'lastPlayedDate', 'updatedAt'])
+        && data.uid == userId
+        && isValidId(data.uid)
+        && data.totalPoints is int && data.totalPoints >= 0 && data.totalPoints <= 1000000
+        && data.gamesPlayed is int && data.gamesPlayed >= 0 && data.gamesPlayed <= 100000
+        && data.bestRunnerScore is int && data.bestRunnerScore >= 0 && data.bestRunnerScore <= 50000
+        && data.bestMemoryScore is int && data.bestMemoryScore >= 0 && data.bestMemoryScore <= 50000
+        && data.bestCatcherScore is int && data.bestCatcherScore >= 0 && data.bestCatcherScore <= 50000
+        && data.achievements is list && data.achievements.size() <= 20 && (data.achievements.size() == 0 || data.achievements[0] is string)
+        && data.streakDays is int && data.streakDays >= 0 && data.streakDays <= 3650
+        && data.lastPlayedDate is string && data.lastPlayedDate.size() <= 20
+        && data.updatedAt is timestamp;
+    }
+
+    // 4. Collection Rules
+
+    match /admins/{adminId} {
+      allow get: if isValidId(adminId) && (isOwner(adminId) || isAdmin());
+      allow list: if isAdmin();
+      allow create: if isValidId(adminId) && isAdmin() && isValidAdminRegistry(incoming()) && incoming().createdAt == request.time;
+      allow update: if false;
+      allow delete: if isValidId(adminId) && isAdmin() && adminId != request.auth.uid;
+    }
+
+    match /users/{userId} {
+      allow get: if isValidId(userId) && (isOwner(userId) || isAdmin());
+      allow list: if isAdmin() || (isSignedIn() && resource.data.uid == request.auth.uid);
+      allow create: if isValidId(userId)
+        && isVerifiedUser()
+        && isOwner(userId)
+        && isValidUserProfile(incoming(), userId)
+        && incoming().role == 'customer'
+        && incoming().status == 'active'
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isValidId(userId)
+        && isVerifiedUser()
+        && isValidUserProfile(incoming(), userId)
+        && incoming().uid == existing().uid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          isAdmin()
+          || (
+            isOwner(userId)
+            && existing().status == 'active'
+            && incoming().role == existing().role
+            && incoming().status == existing().status
+            && incoming().diff(existing()).affectedKeys().hasOnly(['fullName', 'phone', 'city', 'photoUrl', 'updatedAt'])
+          )
+        );
+      allow delete: if false;
+    }
+
+    match /pets/{petId} {
+      allow get: if isValidId(petId) && isSignedIn() && (existing().ownerId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (resource.data.ownerId == request.auth.uid || isAdmin());
+      allow create: if isValidId(petId)
+        && isVerifiedUser()
+        && isValidPet(incoming())
+        && incoming().ownerId == request.auth.uid
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isValidId(petId)
+        && isVerifiedUser()
+        && isValidPet(incoming())
+        && incoming().ownerId == existing().ownerId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          isAdmin()
+          || (
+            existing().ownerId == request.auth.uid
+            && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'animalType', 'breed', 'age', 'size', 'photoUrl', 'behaviorNotes', 'feedingInstructions', 'specialCareInstructions', 'medicationNotes', 'updatedAt'])
+          )
+        );
+      allow delete: if isValidId(petId) && isVerifiedUser() && (existing().ownerId == request.auth.uid || isAdmin());
+    }
+
+    match /caregiverApplications/{applicationId} {
+      allow get: if isValidId(applicationId) && isSignedIn() && (isOwner(applicationId) || isAdmin());
+      allow list: if isSignedIn() && (resource.data.uid == request.auth.uid || isAdmin());
+      allow create: if isValidId(applicationId)
+        && isVerifiedUser()
+        && isOwner(applicationId)
+        && isValidCaregiverApplication(incoming(), applicationId)
+        && incoming().status == 'submitted'
+        && !('rejectionReason' in incoming())
+        && !('reviewedBy' in incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isValidId(applicationId)
+        && isVerifiedUser()
+        && isValidCaregiverApplication(incoming(), applicationId)
+        && incoming().uid == existing().uid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          isAdmin()
+          || (
+            isOwner(applicationId)
+            && existing().status in ['submitted', 'rejected']
+            && incoming().status == 'submitted'
+            && incoming().diff(existing()).affectedKeys().hasOnly(['fullName', 'phone', 'city', 'photoUrl', 'experienceSummary', 'petTypesHandled', 'servicesOffered', 'availabilitySummary', 'intro', 'status', 'updatedAt'])
+          )
+        );
+      allow delete: if false;
+    }
+
+    match /caregivers/{caregiverId} {
+      allow get: if isValidId(caregiverId) && (existing().verificationStatus == 'approved' || isOwner(caregiverId) || isAdmin());
+      allow list: if resource.data.verificationStatus == 'approved' || (isSignedIn() && resource.data.uid == request.auth.uid) || isAdmin();
+      allow create: if isValidId(caregiverId)
+        && isAdmin()
+        && isValidCaregiverPublic(incoming(), caregiverId)
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isValidId(caregiverId)
+        && isVerifiedUser()
+        && isValidCaregiverPublic(incoming(), caregiverId)
+        && incoming().uid == existing().uid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          isAdmin()
+          || (
+            isOwner(caregiverId)
+            && existing().verificationStatus == 'approved'
+            && incoming().verificationStatus == existing().verificationStatus
+            && incoming().diff(existing()).affectedKeys().hasOnly(['availabilitySlots', 'unavailableDates', 'isAvailable', 'intro', 'updatedAt'])
+          )
+        );
+      allow delete: if false;
+    }
+
+    match /services/{serviceId} {
+      allow get: if isValidId(serviceId);
+      allow list: if resource.data.active == true || isAdmin();
+      allow create: if isValidId(serviceId)
+        && isAdmin()
+        && isValidService(incoming())
+        && incoming().updatedAt == request.time;
+      allow update: if isValidId(serviceId)
+        && isAdmin()
+        && isValidService(incoming())
+        && incoming().slug == existing().slug
+        && incoming().updatedAt == request.time;
+      allow delete: if false;
+    }
+
+    match /pricing/{serviceId} {
+      allow get: if isValidId(serviceId) && isAdmin();
+      allow list: if isAdmin();
+      allow create, update: if isValidId(serviceId)
+        && isAdmin()
+        && isValidInternalPricing(incoming())
+        && incoming().updatedAt == request.time;
+      allow delete: if false;
+    }
+
+    match /pricingHistory/{historyId} {
+      allow get: if isValidId(historyId) && isAdmin();
+      allow list: if isAdmin();
+      allow create: if isValidId(historyId)
+        && isAdmin()
+        && isValidPricingHistory(incoming())
+        && incoming().changedAt == request.time;
+      allow update, delete: if false;
+    }
+
+    match /bookings/{bookingId} {
+      allow get: if isValidId(bookingId) && isSignedIn() && (
+        existing().customerId == request.auth.uid
+        || existing().assignedCaregiverId == request.auth.uid
+        || isAdmin()
+      );
+      allow list: if isSignedIn() && (
+        resource.data.customerId == request.auth.uid
+        || resource.data.assignedCaregiverId == request.auth.uid
+        || isAdmin()
+      );
+      allow create: if isValidId(bookingId)
+        && isVerifiedUser()
+        && isValidBooking(incoming())
+        && incoming().customerId == request.auth.uid
+        && incoming().status == 'pending'
+        && incoming().assignedCaregiverId == ''
+        && incoming().assignedCaregiverName == ''
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && exists(/databases/$(database)/documents/pets/$(incoming().petId))
+        && get(/databases/$(database)/documents/pets/$(incoming().petId)).data.ownerId == request.auth.uid
+        && exists(/databases/$(database)/documents/services/$(incoming().serviceId))
+        && get(/databases/$(database)/documents/services/$(incoming().serviceId)).data.active == true
+        && incoming().priceSnapshotInr == get(/databases/$(database)/documents/services/$(incoming().serviceId)).data.customerPriceInr;
+      allow update: if isValidId(bookingId)
+        && isVerifiedUser()
+        && isValidBooking(incoming())
+        && incoming().customerId == existing().customerId
+        && incoming().petId == existing().petId
+        && incoming().serviceId == existing().serviceId
+        && incoming().priceSnapshotInr == existing().priceSnapshotInr
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          isAdmin()
+          || (
+            !(existing().status in ['completed', 'cancelled', 'rejected'])
+            && (
+              (
+                existing().customerId == request.auth.uid
+                && existing().status in ['pending', 'accepted', 'confirmed']
+                && incoming().status == 'cancelled'
+                && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'cancellationReason', 'updatedAt'])
+              )
+              ||
+              (
+                existing().assignedCaregiverId == request.auth.uid
+                && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt'])
+                && (
+                  (existing().status == 'pending' && incoming().status in ['accepted', 'rejected'])
+                  || (existing().status == 'confirmed' && incoming().status == 'in_progress')
+                  || (existing().status == 'in_progress' && incoming().status == 'completed')
+                )
+              )
+            )
+          )
+        );
+      allow delete: if false;
+    }
+
+    match /conversations/{conversationId} {
+      allow get: if isValidId(conversationId) && isSignedIn() && (
+        existing().customerId == request.auth.uid
+        || existing().assignedCaregiverId == request.auth.uid
+        || isAdmin()
+      );
+      allow list: if isSignedIn() && (
+        resource.data.customerId == request.auth.uid
+        || resource.data.assignedCaregiverId == request.auth.uid
+        || isAdmin()
+      );
+      allow create: if isValidId(conversationId)
+        && isVerifiedUser()
+        && isValidConversation(incoming())
+        && (incoming().customerId == request.auth.uid || isAdmin())
+        && incoming().status == 'open'
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && incoming().lastMessageAt == request.time;
+      allow update: if isValidId(conversationId)
+        && isVerifiedUser()
+        && isValidConversation(incoming())
+        && incoming().customerId == existing().customerId
+        && incoming().type == existing().type
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          isAdmin()
+          || (
+            (existing().customerId == request.auth.uid || existing().assignedCaregiverId == request.auth.uid)
+            && incoming().status == existing().status
+            && incoming().diff(existing()).affectedKeys().hasOnly(['lastMessagePreview', 'lastMessageAt', 'updatedAt'])
+          )
+        );
+      allow delete: if false;
+
+      match /messages/{messageId} {
+        allow get: if isValidId(conversationId) && isValidId(messageId) && isSignedIn() && (
+          get(/databases/$(database)/documents/conversations/$(conversationId)).data.customerId == request.auth.uid
+          || get(/databases/$(database)/documents/conversations/$(conversationId)).data.assignedCaregiverId == request.auth.uid
+          || isAdmin()
+        );
+        allow list: if isSignedIn() && (
+          get(/databases/$(database)/documents/conversations/$(conversationId)).data.customerId == request.auth.uid
+          || get(/databases/$(database)/documents/conversations/$(conversationId)).data.assignedCaregiverId == request.auth.uid
+          || isAdmin()
+        );
+        allow create: if isValidId(conversationId) && isValidId(messageId)
+          && isVerifiedUser()
+          && isValidMessage(incoming())
+          && incoming().senderId == request.auth.uid
+          && incoming().createdAt == request.time
+          && exists(/databases/$(database)/documents/conversations/$(conversationId))
+          && (
+            isAdmin()
+            || get(/databases/$(database)/documents/conversations/$(conversationId)).data.customerId == request.auth.uid
+            || get(/databases/$(database)/documents/conversations/$(conversationId)).data.assignedCaregiverId == request.auth.uid
+          );
+        allow update, delete: if false;
+      }
+    }
+
+    match /notifications/{notificationId} {
+      allow get: if isValidId(notificationId) && isSignedIn() && (existing().userId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isValidId(notificationId)
+        && isVerifiedUser()
+        && isValidNotification(incoming())
+        && incoming().read == false
+        && incoming().createdAt == request.time
+        && (
+          isAdmin()
+          || incoming().userId == request.auth.uid
+          || (
+            incoming().category == 'booking'
+            && 'relatedId' in incoming()
+            && exists(/databases/$(database)/documents/bookings/$(incoming().relatedId))
+            && (
+              get(/databases/$(database)/documents/bookings/$(incoming().relatedId)).data.assignedCaregiverId == request.auth.uid
+              || get(/databases/$(database)/documents/bookings/$(incoming().relatedId)).data.customerId == request.auth.uid
+            )
+          )
+        );
+      allow update: if isValidId(notificationId)
+        && isVerifiedUser()
+        && isValidNotification(incoming())
+        && existing().userId == request.auth.uid
+        && incoming().userId == existing().userId
+        && incoming().createdAt == existing().createdAt
+        && incoming().diff(existing()).affectedKeys().hasOnly(['read']);
+      allow delete: if false;
+    }
+
+    match /websiteContent/{sectionId} {
+      allow get: if isValidId(sectionId);
+      allow list: if resource.data.sectionKey is string;
+      allow create, update: if isValidId(sectionId)
+        && isAdmin()
+        && isValidWebsiteContent(incoming(), sectionId)
+        && incoming().updatedAt == request.time;
+      allow delete: if false;
+    }
+
+    match /auditLogs/{logId} {
+      allow get: if isValidId(logId) && isAdmin();
+      allow list: if isAdmin();
+      allow create: if isValidId(logId)
+        && isVerifiedUser()
+        && isValidAuditLog(incoming())
+        && (isAdmin() || incoming().actorId == request.auth.uid)
+        && incoming().createdAt == request.time;
+      allow update, delete: if false;
+    }
+
+    // Game Sessions (immutable after creation, bounded points)
+    match /gameSessions/{sessionId} {
+      allow get: if isValidId(sessionId) && isSignedIn() && (existing().uid == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (resource.data.uid == request.auth.uid || isAdmin());
+      allow create: if isValidId(sessionId)
+        && isVerifiedUser()
+        && isValidGameSession(incoming())
+        && incoming().uid == request.auth.uid
+        && incoming().createdAt == request.time;
+      allow update, delete: if false;
+    }
+
+    // Rewards & Achievements (monotonic bounded increment only)
+    match /rewards/{userId} {
+      allow get: if isValidId(userId) && (isOwner(userId) || isAdmin());
+      allow list: if isSignedIn() && (resource.data.uid == request.auth.uid || isAdmin());
+      allow create: if isValidId(userId)
+        && isVerifiedUser()
+        && isOwner(userId)
+        && isValidRewardProfile(incoming(), userId)
+        && incoming().totalPoints <= 150
+        && incoming().gamesPlayed <= 1
+        && incoming().updatedAt == request.time;
+      allow update: if isValidId(userId)
+        && isVerifiedUser()
+        && isValidRewardProfile(incoming(), userId)
+        && incoming().uid == existing().uid
+        && incoming().updatedAt == request.time
+        && (
+          isAdmin()
+          || (
+            isOwner(userId)
+            && incoming().totalPoints >= existing().totalPoints
+            && (incoming().totalPoints - existing().totalPoints) <= 150
+            && incoming().gamesPlayed == existing().gamesPlayed + 1
+            && incoming().bestRunnerScore >= existing().bestRunnerScore
+            && incoming().bestMemoryScore >= existing().bestMemoryScore
+            && incoming().bestCatcherScore >= existing().bestCatcherScore
+          )
+        );
+      allow delete: if false;
+    }
+  }
+}

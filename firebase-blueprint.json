@@ -1,0 +1,362 @@
+{
+  "entities": {
+    "AdminRegistry": {
+      "title": "AdminRegistry",
+      "description": "Authoritative registry of admin UIDs verified by existing admins or bootstrapped platform owner.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "email": { "type": "string", "format": "email", "minLength": 3, "maxLength": 254 },
+        "grantedBy": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "grantedBy", "createdAt"]
+    },
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Private account profile for customers, approved caregivers, and admins.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "fullName": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "email": { "type": "string", "format": "email", "minLength": 3, "maxLength": 254 },
+        "phone": { "type": "string", "maxLength": 24 },
+        "city": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "photoUrl": { "type": "string", "maxLength": 200000 },
+        "role": { "type": "string", "enum": ["customer", "caregiver", "admin"] },
+        "status": { "type": "string", "enum": ["active", "suspended"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "fullName", "email", "city", "role", "status", "createdAt", "updatedAt"]
+    },
+    "PetProfile": {
+      "title": "PetProfile",
+      "description": "Customer-owned pet profile containing care, feeding, and behavioral instructions.",
+      "type": "object",
+      "properties": {
+        "ownerId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "name": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "animalType": { "type": "string", "enum": ["Dog", "Cat", "Bird", "Rabbit", "Other"] },
+        "breed": { "type": "string", "maxLength": 80 },
+        "age": { "type": "string", "minLength": 1, "maxLength": 40 },
+        "size": { "type": "string", "enum": ["Small", "Medium", "Large", "Extra Large"] },
+        "photoUrl": { "type": "string", "maxLength": 200000 },
+        "behaviorNotes": { "type": "string", "maxLength": 1000 },
+        "feedingInstructions": { "type": "string", "maxLength": 1000 },
+        "specialCareInstructions": { "type": "string", "maxLength": 1000 },
+        "medicationNotes": { "type": "string", "maxLength": 1000 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["ownerId", "name", "animalType", "age", "size", "createdAt", "updatedAt"]
+    },
+    "CaregiverApplication": {
+      "title": "CaregiverApplication",
+      "description": "Caregiver onboarding application containing PII and experience details for admin verification.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "fullName": { "type": "string", "minLength": 2, "maxLength": 120 },
+        "email": { "type": "string", "format": "email", "minLength": 3, "maxLength": 254 },
+        "phone": { "type": "string", "minLength": 6, "maxLength": 24 },
+        "city": { "type": "string", "minLength": 2, "maxLength": 80 },
+        "photoUrl": { "type": "string", "maxLength": 200000 },
+        "experienceSummary": { "type": "string", "minLength": 10, "maxLength": 1500 },
+        "petTypesHandled": { "type": "array" },
+        "servicesOffered": { "type": "array" },
+        "availabilitySummary": { "type": "string", "minLength": 2, "maxLength": 500 },
+        "intro": { "type": "string", "minLength": 10, "maxLength": 1500 },
+        "status": { "type": "string", "enum": ["submitted", "under_review", "approved", "rejected", "suspended"] },
+        "rejectionReason": { "type": "string", "maxLength": 600 },
+        "reviewedBy": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "fullName", "email", "phone", "city", "experienceSummary", "petTypesHandled", "servicesOffered", "availabilitySummary", "intro", "status", "createdAt", "updatedAt"]
+    },
+    "CaregiverPublicProfile": {
+      "title": "CaregiverPublicProfile",
+      "description": "Approved caregiver directory profile without private phone or email PII.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "displayName": { "type": "string", "minLength": 2, "maxLength": 120 },
+        "city": { "type": "string", "minLength": 2, "maxLength": 80 },
+        "photoUrl": { "type": "string", "maxLength": 200000 },
+        "experienceSummary": { "type": "string", "minLength": 5, "maxLength": 1500 },
+        "petTypesHandled": { "type": "array" },
+        "servicesOffered": { "type": "array" },
+        "availabilitySlots": { "type": "array" },
+        "unavailableDates": { "type": "array" },
+        "isAvailable": { "type": "boolean" },
+        "intro": { "type": "string", "minLength": 5, "maxLength": 1500 },
+        "verificationStatus": { "type": "string", "enum": ["approved", "suspended"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "displayName", "city", "experienceSummary", "petTypesHandled", "servicesOffered", "availabilitySlots", "isAvailable", "intro", "verificationStatus", "createdAt", "updatedAt"]
+    },
+    "ServiceItem": {
+      "title": "ServiceItem",
+      "description": "Customer-facing pet care service catalog item with admin-configured live tariff.",
+      "type": "object",
+      "properties": {
+        "slug": { "type": "string", "minLength": 2, "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "name": { "type": "string", "minLength": 2, "maxLength": 100 },
+        "shortDescription": { "type": "string", "minLength": 5, "maxLength": 240 },
+        "description": { "type": "string", "minLength": 10, "maxLength": 1500 },
+        "durationLabel": { "type": "string", "minLength": 2, "maxLength": 60 },
+        "durationMinutes": { "type": "integer" },
+        "customerPriceInr": { "type": "number" },
+        "active": { "type": "boolean" },
+        "imageUrl": { "type": "string", "maxLength": 500 },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["slug", "name", "shortDescription", "description", "durationLabel", "durationMinutes", "customerPriceInr", "active", "updatedAt"]
+    },
+    "InternalPricing": {
+      "title": "InternalPricing",
+      "description": "Admin-only internal unit economics, variable cost, and platform commission configuration.",
+      "type": "object",
+      "properties": {
+        "serviceId": { "type": "string", "minLength": 2, "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "serviceName": { "type": "string", "minLength": 2, "maxLength": 100 },
+        "customerPriceInr": { "type": "number" },
+        "variableCostInr": { "type": "number" },
+        "platformCommissionInr": { "type": "number" },
+        "notes": { "type": "string", "maxLength": 500 },
+        "updatedBy": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["serviceId", "serviceName", "customerPriceInr", "variableCostInr", "platformCommissionInr", "updatedBy", "updatedAt"]
+    },
+    "PricingHistory": {
+      "title": "PricingHistory",
+      "description": "Admin-only audit record of tariff and cost changes.",
+      "type": "object",
+      "properties": {
+        "serviceId": { "type": "string", "minLength": 2, "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "serviceName": { "type": "string", "minLength": 2, "maxLength": 100 },
+        "previousCustomerPriceInr": { "type": "number" },
+        "newCustomerPriceInr": { "type": "number" },
+        "newVariableCostInr": { "type": "number" },
+        "newCommissionInr": { "type": "number" },
+        "changedBy": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "changedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["serviceId", "serviceName", "previousCustomerPriceInr", "newCustomerPriceInr", "newVariableCostInr", "newCommissionInr", "changedBy", "changedAt"]
+    },
+    "Booking": {
+      "title": "Booking",
+      "description": "Pet care booking request with price snapshot, status lifecycle, and caregiver assignment.",
+      "type": "object",
+      "properties": {
+        "customerId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "customerName": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "petId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "petName": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "petAnimalType": { "type": "string", "minLength": 1, "maxLength": 40 },
+        "petCareSummary": { "type": "string", "maxLength": 1200 },
+        "serviceId": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "serviceName": { "type": "string", "minLength": 2, "maxLength": 100 },
+        "requestedDate": { "type": "string", "minLength": 8, "maxLength": 20 },
+        "requestedTime": { "type": "string", "minLength": 2, "maxLength": 40 },
+        "durationMinutes": { "type": "integer" },
+        "serviceLocation": { "type": "string", "minLength": 4, "maxLength": 300 },
+        "city": { "type": "string", "minLength": 2, "maxLength": 80 },
+        "customerInstructions": { "type": "string", "maxLength": 1500 },
+        "assignedCaregiverId": { "type": "string", "maxLength": 128 },
+        "assignedCaregiverName": { "type": "string", "maxLength": 120 },
+        "priceSnapshotInr": { "type": "number" },
+        "status": { "type": "string", "enum": ["pending", "accepted", "rejected", "confirmed", "in_progress", "completed", "cancelled"] },
+        "cancellationReason": { "type": "string", "maxLength": 500 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["customerId", "customerName", "petId", "petName", "petAnimalType", "serviceId", "serviceName", "requestedDate", "requestedTime", "durationMinutes", "serviceLocation", "city", "assignedCaregiverId", "assignedCaregiverName", "priceSnapshotInr", "status", "createdAt", "updatedAt"]
+    },
+    "Conversation": {
+      "title": "Conversation",
+      "description": "Support or booking coordination conversation restricted to authorized participants.",
+      "type": "object",
+      "properties": {
+        "type": { "type": "string", "enum": ["support", "booking_chat"] },
+        "customerId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "customerName": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "assignedCaregiverId": { "type": "string", "maxLength": 128 },
+        "bookingId": { "type": "string", "maxLength": 128 },
+        "subject": { "type": "string", "minLength": 2, "maxLength": 160 },
+        "status": { "type": "string", "enum": ["open", "pending", "resolved"] },
+        "lastMessagePreview": { "type": "string", "maxLength": 200 },
+        "lastMessageAt": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["type", "customerId", "customerName", "assignedCaregiverId", "bookingId", "subject", "status", "lastMessagePreview", "lastMessageAt", "createdAt", "updatedAt"]
+    },
+    "Message": {
+      "title": "Message",
+      "description": "Single message inside an authorized conversation.",
+      "type": "object",
+      "properties": {
+        "senderId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "senderName": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "senderRole": { "type": "string", "enum": ["customer", "caregiver", "admin"] },
+        "text": { "type": "string", "minLength": 1, "maxLength": 2000 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["senderId", "senderName", "senderRole", "text", "createdAt"]
+    },
+    "NotificationItem": {
+      "title": "NotificationItem",
+      "description": "System event notification for a specific user.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "title": { "type": "string", "minLength": 2, "maxLength": 140 },
+        "body": { "type": "string", "minLength": 2, "maxLength": 500 },
+        "category": { "type": "string", "enum": ["booking", "caregiver", "support", "account"] },
+        "relatedId": { "type": "string", "maxLength": 128 },
+        "read": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "title", "body", "category", "read", "createdAt"]
+    },
+    "WebsiteContent": {
+      "title": "WebsiteContent",
+      "description": "Admin-editable website text, announcements, FAQ items, and contact details.",
+      "type": "object",
+      "properties": {
+        "sectionKey": { "type": "string", "minLength": 2, "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "heroHeadline": { "type": "string", "maxLength": 200 },
+        "heroSubtext": { "type": "string", "maxLength": 600 },
+        "announcementText": { "type": "string", "maxLength": 300 },
+        "announcementActive": { "type": "boolean" },
+        "dehradunIntro": { "type": "string", "maxLength": 800 },
+        "contactEmail": { "type": "string", "maxLength": 254 },
+        "contactPhone": { "type": "string", "maxLength": 40 },
+        "contactAddress": { "type": "string", "maxLength": 240 },
+        "serviceHours": { "type": "string", "maxLength": 120 },
+        "faqItems": { "type": "array" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["sectionKey", "updatedAt"]
+    },
+    "AuditLog": {
+      "title": "AuditLog",
+      "description": "Immutable operational audit log for bookings, caregiver approvals, and pricing updates.",
+      "type": "object",
+      "properties": {
+        "actorId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "actorEmail": { "type": "string", "maxLength": 254 },
+        "action": { "type": "string", "minLength": 2, "maxLength": 80 },
+        "targetCollection": { "type": "string", "minLength": 2, "maxLength": 64 },
+        "targetId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "summary": { "type": "string", "minLength": 2, "maxLength": 500 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["actorId", "actorEmail", "action", "targetCollection", "targetId", "summary", "createdAt"]
+    },
+    "GameSession": {
+      "title": "GameSession",
+      "description": "Validated record of a completed PawCare Play Zone mini-game session.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "gameId": { "type": "string", "enum": ["paw_runner", "paw_memory", "treat_catcher"] },
+        "score": { "type": "integer" },
+        "pointsAwarded": { "type": "integer" },
+        "durationSec": { "type": "integer" },
+        "difficulty": { "type": "string", "maxLength": 32 },
+        "won": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "gameId", "score", "pointsAwarded", "durationSec", "won", "createdAt"]
+    },
+    "RewardProfile": {
+      "title": "RewardProfile",
+      "description": "User entertainment points, game high scores, and unlocked achievement badges.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "totalPoints": { "type": "integer" },
+        "gamesPlayed": { "type": "integer" },
+        "bestRunnerScore": { "type": "integer" },
+        "bestMemoryScore": { "type": "integer" },
+        "bestCatcherScore": { "type": "integer" },
+        "achievements": { "type": "array" },
+        "streakDays": { "type": "integer" },
+        "lastPlayedDate": { "type": "string", "maxLength": 20 },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "totalPoints", "gamesPlayed", "bestRunnerScore", "bestMemoryScore", "bestCatcherScore", "achievements", "streakDays", "lastPlayedDate", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/admins/{adminId}": {
+      "schema": { "$ref": "#/entities/AdminRegistry" },
+      "description": "Admin UID registry."
+    },
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "User profile documents isolated per user."
+    },
+    "/pets/{petId}": {
+      "schema": { "$ref": "#/entities/PetProfile" },
+      "description": "Customer pet profiles."
+    },
+    "/caregiverApplications/{applicationId}": {
+      "schema": { "$ref": "#/entities/CaregiverApplication" },
+      "description": "Caregiver verification applications."
+    },
+    "/caregivers/{caregiverId}": {
+      "schema": { "$ref": "#/entities/CaregiverPublicProfile" },
+      "description": "Verified caregiver directory without PII."
+    },
+    "/services/{serviceId}": {
+      "schema": { "$ref": "#/entities/ServiceItem" },
+      "description": "Public pet-care service catalog."
+    },
+    "/pricing/{serviceId}": {
+      "schema": { "$ref": "#/entities/InternalPricing" },
+      "description": "Admin-only internal pricing, cost, and commission settings."
+    },
+    "/pricingHistory/{historyId}": {
+      "schema": { "$ref": "#/entities/PricingHistory" },
+      "description": "Admin-only pricing change audit history."
+    },
+    "/bookings/{bookingId}": {
+      "schema": { "$ref": "#/entities/Booking" },
+      "description": "Pet care bookings with transactional status and price snapshots."
+    },
+    "/conversations/{conversationId}": {
+      "schema": { "$ref": "#/entities/Conversation" },
+      "description": "Support and booking coordination threads."
+    },
+    "/conversations/{conversationId}/messages/{messageId}": {
+      "schema": { "$ref": "#/entities/Message" },
+      "description": "Individual messages within a conversation."
+    },
+    "/notifications/{notificationId}": {
+      "schema": { "$ref": "#/entities/NotificationItem" },
+      "description": "Real-time user notifications."
+    },
+    "/websiteContent/{sectionId}": {
+      "schema": { "$ref": "#/entities/WebsiteContent" },
+      "description": "Admin-managed website copy, announcements, FAQ, and contact info."
+    },
+    "/auditLogs/{logId}": {
+      "schema": { "$ref": "#/entities/AuditLog" },
+      "description": "Immutable audit log entries."
+    },
+    "/gameSessions/{sessionId}": {
+      "schema": { "$ref": "#/entities/GameSession" },
+      "description": "Completed PawCare Play Zone game sessions."
+    },
+    "/rewards/{userId}": {
+      "schema": { "$ref": "#/entities/RewardProfile" },
+      "description": "User entertainment points and unlocked game achievements."
+    }
+  }
+}
