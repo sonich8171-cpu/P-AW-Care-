@@ -232,6 +232,12 @@ export const ACHIEVEMENT_DEFS = [
     pointsHint: 'Pet Treat Catcher',
   },
   {
+    id: 'rescue_hero',
+    title: 'Garden Rescue Hero',
+    description: 'Rescue lost pets safely to the PawCare House in Pet Rescue Adventure.',
+    pointsHint: 'Pet Rescue Adventure',
+  },
+  {
     id: 'five_games_played',
     title: 'Play Zone Regular',
     description: 'Complete 5 mini-game sessions on PawCare.',

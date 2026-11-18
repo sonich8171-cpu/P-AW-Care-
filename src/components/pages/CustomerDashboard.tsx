@@ -8,6 +8,7 @@ import {
   Eye,
   Gamepad2,
   History,
+  LogOut,
   MessageSquare,
   PawPrint,
   Plus,
@@ -52,9 +53,10 @@ import { SafeImage } from '../ui/SafeImage';
 interface CustomerDashboardProps {
   onStartBooking: (serviceSlug?: string) => void;
   onNavigate: (view: AppView) => void;
+  initialTab?: CustomerTab;
 }
 
-type CustomerTab =
+export type CustomerTab =
   | 'overview'
   | 'bookings'
   | 'pets'
@@ -62,7 +64,11 @@ type CustomerTab =
   | 'notifications'
   | 'settings';
 
-export function CustomerDashboard({ onStartBooking, onNavigate }: CustomerDashboardProps) {
+export function CustomerDashboard({
+  onStartBooking,
+  onNavigate,
+  initialTab = 'overview',
+}: CustomerDashboardProps) {
   const {
     firebaseUser,
     userProfile,
@@ -70,14 +76,19 @@ export function CustomerDashboard({ onStartBooking, onNavigate }: CustomerDashbo
     notifications,
     unreadCount,
     updateOwnProfile,
+    signOutUser,
   } = useAuth();
 
-  const [tab, setTab] = useState<CustomerTab>('overview');
+  const [tab, setTab] = useState<CustomerTab>(initialTab);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [pets, setPets] = useState<PetProfile[]>([]);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    setTab(initialTab);
+  }, [initialTab]);
 
   // Pet form & detail modal state
   const [showPetForm, setShowPetForm] = useState(false);
@@ -422,13 +433,46 @@ export function CustomerDashboard({ onStartBooking, onNavigate }: CustomerDashbo
 
           {tab === 'overview' && (
             <div className="space-y-6">
-              <div className="rounded-2xl border border-[#E6E2D8] bg-white p-6 space-y-2">
-                <h1 className="font-display text-2xl font-bold text-[#1A221D]">
-                  Welcome back, {userProfile?.fullName || 'Pet Parent'}
-                </h1>
-                <p className="text-sm text-[#526057]">
-                  Manage your pet profiles, track real-time booking statuses, and stay in sync with assigned caregivers and PawCare Support.
-                </p>
+              <div className="rounded-2xl border border-[#E6E2D8] bg-white p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="space-y-1.5">
+                  <h1 className="font-display text-2xl font-bold text-[#1A221D]">
+                    Welcome back, {userProfile?.fullName || firebaseUser.displayName || 'Pet Parent'}!
+                  </h1>
+                  <p className="text-sm text-[#526057]">
+                    Manage your pet profiles, track real-time booking statuses, and stay in sync with assigned caregivers and PawCare Support.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setTab('notifications')}
+                    aria-label="Notifications"
+                    className="relative p-2.5 rounded-xl border border-[#E6E2D8] bg-[#FAF8F4] text-[#1B4332] hover:bg-[#F1F6F2] cursor-pointer"
+                  >
+                    <Bell className="w-4 h-4" />
+                    {unreadCount > 0 && (
+                      <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-[#E07A2B] text-white text-[10px] font-mono font-bold flex items-center justify-center tabular-nums">
+                        {unreadCount}
+                      </span>
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTab('settings')}
+                    aria-label="Profile settings"
+                    className="p-2.5 rounded-xl border border-[#E6E2D8] bg-[#FAF8F4] text-[#445249] hover:bg-[#F1F6F2] cursor-pointer"
+                  >
+                    <Settings className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void signOutUser()}
+                    className="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-xl border border-[#E6E2D8] text-xs font-semibold text-[#445249] hover:bg-rose-50 hover:text-rose-700 hover:border-rose-200 transition-colors cursor-pointer"
+                  >
+                    <LogOut className="w-3.5 h-3.5" />
+                    Sign Out
+                  </button>
+                </div>
               </div>
 
               {/* 10 Interactive Customer Dashboard Cards */}
@@ -466,7 +510,7 @@ export function CustomerDashboard({ onStartBooking, onNavigate }: CustomerDashbo
                   },
                   {
                     title: 'PawCare Games',
-                    sub: 'Play 3 mini-games',
+                    sub: 'Play 4 mini-games',
                     icon: <Gamepad2 className="w-4 h-4 text-[#2D6A4F]" />,
                     action: () => onNavigate('play-zone'),
                   },
@@ -867,6 +911,14 @@ export function CustomerDashboard({ onStartBooking, onNavigate }: CustomerDashbo
                   <p className="text-sm text-[#526057]">
                     Add your dog, cat, or small pet so you can quickly schedule bookings.
                   </p>
+                  <button
+                    type="button"
+                    onClick={() => openPetEditor()}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#1B4332] text-white text-xs font-semibold cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    Add Your First Pet
+                  </button>
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

@@ -7,6 +7,7 @@ import type { AppView, GameId, RewardProfile } from '../../types/pawcare';
 import { PageReveal } from '../ui/MotionPrimitives';
 import { PawMemoryMatch } from '../games/PawMemoryMatch';
 import { PawRunnerGame } from '../games/PawRunnerGame';
+import { PetRescueGame } from '../games/PetRescueGame';
 import { TreatCatcherGame } from '../games/TreatCatcherGame';
 
 interface PlayZonePageProps {
@@ -67,6 +68,13 @@ export function PlayZonePage({ onNavigate, onRequireAuth }: PlayZonePageProps) {
       best: rewardProfile?.bestCatcherScore ?? 0,
       badge: 'Arcade Catcher',
     },
+    {
+      id: 'pet_rescue',
+      title: 'Pet Rescue Adventure',
+      subtitle: 'Explore Dehradun gardens, rescue lost pets, and guide them home safely.',
+      best: rewardProfile?.bestRescueScore ?? 0,
+      badge: 'Garden Rescue',
+    },
   ];
 
   return (
@@ -82,7 +90,7 @@ export function PlayZonePage({ onNavigate, onRequireAuth }: PlayZonePageProps) {
             Play Pet Mini-Games, Earn Points &amp; Unlock Badges
           </h1>
           <p className="text-xs sm:text-sm text-emerald-100 leading-relaxed">
-            Take a fun break with three responsive pet-themed games. Signed-in users earn server-validated PawCare Points and achievement badges saved to their profile.
+            Take a fun break with four responsive pet-themed games. Signed-in users earn server-validated PawCare Points and achievement badges saved to their profile.
           </p>
         </div>
 
@@ -120,7 +128,7 @@ export function PlayZonePage({ onNavigate, onRequireAuth }: PlayZonePageProps) {
       )}
 
       {/* Game Selector Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {games.map((g) => {
           const active = activeGame === g.id;
           return (
@@ -170,6 +178,13 @@ export function PlayZonePage({ onNavigate, onRequireAuth }: PlayZonePageProps) {
       {activeGame === 'treat_catcher' && (
         <TreatCatcherGame
           bestScore={rewardProfile?.bestCatcherScore ?? 0}
+          onRequireAuth={onRequireAuth}
+          onSessionSaved={handleSaved}
+        />
+      )}
+      {activeGame === 'pet_rescue' && (
+        <PetRescueGame
+          bestScore={rewardProfile?.bestRescueScore ?? 0}
           onRequireAuth={onRequireAuth}
           onSessionSaved={handleSaved}
         />

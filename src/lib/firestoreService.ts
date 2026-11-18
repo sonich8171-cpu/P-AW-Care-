@@ -794,6 +794,93 @@ export async function adminUpdateUserAccount(params: {
   }
 }
 
+export async function adminGrantAdminAccess(params: {
+  targetUid: string;
+  targetEmail: string;
+  adminUid: string;
+  adminEmail: string;
+}): Promise<void> {
+  const { targetUid, targetEmail, adminUid, adminEmail } = params;
+  const path = `admins/${targetUid}`;
+  try {
+    const batch = writeBatch(db);
+    batch.set(doc(db, 'admins', targetUid), {
+      uid: targetUid,
+      email: clampText(targetEmail, SCHEMA_LIMITS.EMAIL_MAX),
+      grantedBy: adminEmail,
+      createdAt: serverTimestamp(),
+    });
+    const userSnap = await getDoc(doc(db, 'users', targetUid));
+    if (userSnap.exists()) {
+      batch.update(doc(db, 'users', targetUid), {
+        role: 'admin',
+        updatedAt: serverTimestamp(),
+      });
+    }
+    await batch.commit();
+
+    await recordAuditLog({
+      actorId: adminUid,
+      actorEmail: adminEmail,
+      action: 'ADMIN_ACCESS_GRANTED',
+      targetCollection: 'admins',
+      targetId: targetUid,
+      summary: `Granted admin privileges to ${targetEmail}.`,
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
+}
+
+export async function adminRevokeAdminAccess(params: {
+  targetUid: string;
+  targetEmail: string;
+  adminUid: string;
+  adminEmail: string;
+}): Promise<void> {
+  const { targetUid, targetEmail, adminUid, adminEmail } = params;
+  if (targetUid === adminUid) {
+    throw new Error('You cannot revoke your own administrator access.');
+  }
+  const path = `admins/${targetUid}`;
+  try {
+    await deleteDoc(doc(db, 'admins', targetUid));
+    const userSnap = await getDoc(doc(db, 'users', targetUid));
+    if (userSnap.exists() && userSnap.data().role === 'admin') {
+      await updateDoc(doc(db, 'users', targetUid), {
+        role: 'customer',
+        updatedAt: serverTimestamp(),
+      });
+    }
+    await recordAuditLog({
+      actorId: adminUid,
+      actorEmail: adminEmail,
+      action: 'ADMIN_ACCESS_REVOKED',
+      targetCollection: 'admins',
+      targetId: targetUid,
+      summary: `Revoked admin privileges for ${targetEmail}.`,
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, path);
+  }
+}
+
+export async function verifyOwnerAdminRecord(params: {
+  uid: string;
+  email: string;
+}): Promise<boolean> {
+  const adminRef = doc(db, 'admins', params.uid);
+  const existing = await getDoc(adminRef);
+  if (existing.exists()) return true;
+  await setDoc(adminRef, {
+    uid: params.uid,
+    email: clampText(params.email, SCHEMA_LIMITS.EMAIL_MAX),
+    grantedBy: 'server-rule-bootstrap',
+    createdAt: serverTimestamp(),
+  });
+  return true;
+}
+
 export async function adminSaveServiceAndPricing(params: {
   service: ServiceItem;
   previousPriceInr: number;
@@ -1137,6 +1224,10 @@ export async function recordValidatedGameSession(params: {
     existing?.bestCatcherScore ?? 0,
     validated.gameId === 'treat_catcher' ? validated.score : 0
   );
+  const nextBestRescue = Math.max(
+    existing?.bestRescueScore ?? 0,
+    validated.gameId === 'pet_rescue' ? validated.score : 0
+  );
 
   try {
     const batch = writeBatch(db);
@@ -1158,6 +1249,7 @@ export async function recordValidatedGameSession(params: {
       bestRunnerScore: nextBestRunner,
       bestMemoryScore: nextBestMemory,
       bestCatcherScore: nextBestCatcher,
+      bestRescueScore: nextBestRescue,
       achievements: validated.achievements,
       streakDays: nextStreak,
       lastPlayedDate: today,

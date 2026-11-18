@@ -31,6 +31,7 @@ const GAME_NAMES: Record<string, string> = {
   paw_runner: 'PawCare Pet Runner',
   paw_memory: 'Paw Memory Match',
   treat_catcher: 'Pet Treat Catcher',
+  pet_rescue: 'PawCare Pet Rescue Adventure',
 };
 
 export function RewardsPage({ onNavigate, onRequireAuth }: RewardsPageProps) {
@@ -176,6 +177,7 @@ export function RewardsPage({ onNavigate, onRequireAuth }: RewardsPageProps) {
               { label: 'PawCare Pet Runner', val: reward?.bestRunnerScore ?? 0 },
               { label: 'Paw Memory Match', val: reward?.bestMemoryScore ?? 0 },
               { label: 'Pet Treat Catcher', val: reward?.bestCatcherScore ?? 0 },
+              { label: 'Pet Rescue Adventure', val: reward?.bestRescueScore ?? 0 },
             ].map((row) => (
               <div
                 key={row.label}

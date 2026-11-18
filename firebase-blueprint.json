@@ -264,7 +264,7 @@
       "type": "object",
       "properties": {
         "uid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
-        "gameId": { "type": "string", "enum": ["paw_runner", "paw_memory", "treat_catcher"] },
+        "gameId": { "type": "string", "enum": ["paw_runner", "paw_memory", "treat_catcher", "pet_rescue"] },
         "score": { "type": "integer" },
         "pointsAwarded": { "type": "integer" },
         "durationSec": { "type": "integer" },
@@ -285,6 +285,7 @@
         "bestRunnerScore": { "type": "integer" },
         "bestMemoryScore": { "type": "integer" },
         "bestCatcherScore": { "type": "integer" },
+        "bestRescueScore": { "type": "integer" },
         "achievements": { "type": "array" },
         "streakDays": { "type": "integer" },
         "lastPlayedDate": { "type": "string", "maxLength": 20 },

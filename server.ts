@@ -70,7 +70,7 @@ interface GameValidateBody {
   existingAchievements?: string[];
 }
 
-const VALID_GAME_IDS = new Set(['paw_runner', 'paw_memory', 'treat_catcher']);
+const VALID_GAME_IDS = new Set(['paw_runner', 'paw_memory', 'treat_catcher', 'pet_rescue']);
 
 function evaluateGameSession(body: GameValidateBody) {
   const gameId = typeof body.gameId === 'string' ? body.gameId : '';
@@ -96,7 +96,7 @@ function evaluateGameSession(body: GameValidateBody) {
 
   // Plausibility guard against impossible burst scores
   const maxReasonableScore =
-    gameId === 'paw_memory' ? 3000 : Math.max(400, durationSec * 45);
+    gameId === 'paw_memory' ? 3000 : Math.max(500, durationSec * 55);
   if (score > maxReasonableScore) {
     return { ok: false as const, error: 'Score exceeded plausible play rate.' };
   }
@@ -111,6 +111,8 @@ function evaluateGameSession(body: GameValidateBody) {
       : 10;
   } else if (gameId === 'treat_catcher') {
     pointsAwarded = Math.min(150, Math.max(10, Math.round(score / 6) + (won ? 15 : 0)));
+  } else if (gameId === 'pet_rescue') {
+    pointsAwarded = Math.min(150, Math.max(15, Math.round(score / 8) + (won ? 25 : 0)));
   }
 
   const prevAch = Array.isArray(body.existingAchievements)
@@ -123,6 +125,7 @@ function evaluateGameSession(body: GameValidateBody) {
   if (gameId === 'paw_runner' && score >= 120) nextAch.add('first_runner_win');
   if (gameId === 'paw_memory' && won) nextAch.add('memory_master');
   if (gameId === 'treat_catcher' && score >= 150) nextAch.add('treat_catcher_champ');
+  if (gameId === 'pet_rescue' && (won || score >= 150)) nextAch.add('rescue_hero');
   if (gamesPlayedAfter >= 5) nextAch.add('five_games_played');
   if (streakAfter >= 3) nextAch.add('three_day_streak');
   if (streakAfter >= 7) nextAch.add('weekly_streak');

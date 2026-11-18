@@ -1,11 +1,13 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import {
   createUserWithEmailAndPassword,
+  getRedirectResult,
   onAuthStateChanged,
   sendEmailVerification,
   sendPasswordResetEmail,
   signInWithEmailAndPassword,
   signInWithPopup,
+  signInWithRedirect,
   signOut,
   updateProfile,
   type User,
@@ -16,8 +18,8 @@ import {
   getDoc,
   limit,
   onSnapshot,
-  orderBy,
   query,
+  runTransaction,
   serverTimestamp,
   setDoc,
   updateDoc,
@@ -25,14 +27,16 @@ import {
 } from 'firebase/firestore';
 import {
   auth,
-  BOOTSTRAPPED_ADMIN_EMAIL,
   db,
   googleProvider,
   handleFirestoreError,
   OperationType,
 } from '../lib/firebase';
 import { DEFAULT_SERVICES, DEFAULT_WEBSITE_CONTENT } from '../lib/defaults';
-import { seedInitialCatalogIfAdmin } from '../lib/firestoreService';
+import {
+  seedInitialCatalogIfAdmin,
+  verifyOwnerAdminRecord,
+} from '../lib/firestoreService';
 import {
   SCHEMA_LIMITS,
   type CaregiverApplication,
@@ -44,6 +48,11 @@ import {
   type WebsiteContent,
 } from '../types/pawcare';
 
+export interface AuthEventMeta {
+  type: 'login' | 'logout';
+  seq: number;
+}
+
 interface AuthContextValue {
   firebaseUser: User | null;
   userProfile: UserProfile | null;
@@ -51,6 +60,9 @@ interface AuthContextValue {
   effectiveRole: UserRole | null;
   needsOnboarding: boolean;
   authReady: boolean;
+  roleReady: boolean;
+  profileError: string | null;
+  lastAuthEvent: AuthEventMeta | null;
   services: ServiceItem[];
   servicesLoadedFromDb: boolean;
   websiteContent: WebsiteContent;
@@ -58,7 +70,7 @@ interface AuthContextValue {
   caregiverProfile: CaregiverPublicProfile | null;
   notifications: NotificationItem[];
   unreadCount: number;
-  signInWithGoogle: () => Promise<void>;
+  signInWithGoogle: () => Promise<'popup' | 'redirect'>;
   signUpWithEmail: (params: {
     email: string;
     password: string;
@@ -70,6 +82,8 @@ interface AuthContextValue {
   sendPasswordReset: (email: string) => Promise<void>;
   resendVerificationEmail: () => Promise<void>;
   signOutUser: () => Promise<void>;
+  retryProfileSetup: () => Promise<void>;
+  attemptOwnerAdminVerification: () => Promise<boolean>;
   completeOnboarding: (params: {
     fullName: string;
     city: string;
@@ -90,8 +104,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [firebaseUser, setFirebaseUser] = useState<User | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [hasAdminDoc, setHasAdminDoc] = useState(false);
+  const [hasAdminClaim, setHasAdminClaim] = useState(false);
   const [authReady, setAuthReady] = useState(false);
   const [profileChecked, setProfileChecked] = useState(false);
+  const [adminChecked, setAdminChecked] = useState(false);
+  const [profileError, setProfileError] = useState<string | null>(null);
+  const [lastAuthEvent, setLastAuthEvent] = useState<AuthEventMeta | null>(null);
 
   const [services, setServices] = useState<ServiceItem[]>(DEFAULT_SERVICES);
   const [servicesLoadedFromDb, setServicesLoadedFromDb] = useState(false);
@@ -102,11 +120,66 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [caregiverProfile, setCaregiverProfile] = useState<CaregiverPublicProfile | null>(null);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
 
-  const isBootstrappedAdmin =
-    Boolean(firebaseUser?.emailVerified) &&
-    firebaseUser?.email?.toLowerCase() === BOOTSTRAPPED_ADMIN_EMAIL.toLowerCase();
+  const ensureCustomerProfile = useCallback(async (user: User) => {
+    if (!user.emailVerified) return;
+    const userRef = doc(db, 'users', user.uid);
+    const defaultName = (
+      user.displayName ||
+      user.email?.split('@')[0] ||
+      'Pet Parent'
+    )
+      .trim()
+      .slice(0, SCHEMA_LIMITS.FULL_NAME_MAX);
+    const cleanEmail = (user.email || '').trim().slice(0, SCHEMA_LIMITS.EMAIL_MAX);
+    const cleanPhoto = (user.photoURL || '').slice(0, SCHEMA_LIMITS.PHOTO_MAX);
 
-  const isAdmin = isBootstrappedAdmin || (Boolean(firebaseUser?.emailVerified) && hasAdminDoc);
+    try {
+      await runTransaction(db, async (tx) => {
+        const snap = await tx.get(userRef);
+        if (!snap.exists()) {
+          tx.set(userRef, {
+            uid: user.uid,
+            fullName: defaultName || 'Pet Parent',
+            email: cleanEmail,
+            phone: '',
+            city: 'Dehradun',
+            photoUrl: cleanPhoto,
+            role: 'customer',
+            status: 'active',
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          });
+        } else {
+          const existing = snap.data() as Partial<UserProfile>;
+          const updates: Record<string, unknown> = {};
+          if (!existing.fullName || !existing.fullName.trim()) {
+            updates.fullName = defaultName || 'Pet Parent';
+          }
+          if (!existing.city || !existing.city.trim()) {
+            updates.city = 'Dehradun';
+          }
+          if (!existing.photoUrl && cleanPhoto) {
+            updates.photoUrl = cleanPhoto;
+          }
+          if (Object.keys(updates).length > 0 && existing.status === 'active') {
+            updates.updatedAt = serverTimestamp();
+            tx.update(userRef, updates);
+          }
+        }
+      });
+      setProfileError(null);
+    } catch (error) {
+      const msg =
+        error instanceof Error
+          ? error.message
+          : 'Unable to initialize your customer profile right now.';
+      console.error('Customer profile initialization error:', msg);
+      setProfileError(msg);
+      throw error;
+    }
+  }, []);
+
+  const isAdmin = Boolean(firebaseUser?.emailVerified) && (hasAdminDoc || hasAdminClaim);
 
   const effectiveRole: UserRole | null = !firebaseUser
     ? null
@@ -116,8 +189,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     ? 'caregiver'
     : 'customer';
 
+  const roleReady = authReady && (!firebaseUser || (profileChecked && adminChecked));
+
   const needsOnboarding = Boolean(
-    firebaseUser && profileChecked && (!userProfile || !userProfile.city)
+    firebaseUser &&
+      firebaseUser.emailVerified &&
+      profileChecked &&
+      !profileError &&
+      userProfile &&
+      !userProfile.city
   );
 
   // Public listeners: active services and website content
@@ -164,30 +244,75 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  // Auth listener
+  // Complete Google redirect flow if returning from signInWithRedirect (mobile browsers)
+  useEffect(() => {
+    let active = true;
+    void getRedirectResult(auth)
+      .then(async (result) => {
+        if (!active || !result?.user) return;
+        await ensureCustomerProfile(result.user);
+        if (active) {
+          setLastAuthEvent({ type: 'login', seq: Date.now() });
+        }
+      })
+      .catch((error) => {
+        console.error(
+          'Google redirect result error:',
+          error instanceof Error ? error.message : String(error)
+        );
+      });
+    return () => {
+      active = false;
+    };
+  }, [ensureCustomerProfile]);
+
+  // Auth state listener
   useEffect(() => {
     const unsubAuth = onAuthStateChanged(auth, (user) => {
       setFirebaseUser(user);
+      setProfileError(null);
       if (!user) {
         setUserProfile(null);
         setHasAdminDoc(false);
+        setHasAdminClaim(false);
         setCaregiverApplication(null);
         setCaregiverProfile(null);
         setNotifications([]);
         setProfileChecked(false);
+        setAdminChecked(false);
         setAuthReady(true);
       } else {
+        setProfileChecked(false);
+        setAdminChecked(false);
+        setHasAdminDoc(false);
+        setHasAdminClaim(false);
         setAuthReady(true);
+
+        void user
+          .getIdTokenResult()
+          .then((tokenResult) => {
+            setHasAdminClaim(tokenResult.claims?.admin === true);
+          })
+          .catch(() => {
+            setHasAdminClaim(false);
+          });
+
+        if (user.emailVerified) {
+          void ensureCustomerProfile(user).catch(() => {
+            // profileError state already captures failure for retry UI
+          });
+        }
       }
     });
     return () => unsubAuth();
-  }, []);
+  }, [ensureCustomerProfile]);
 
-  // User-scoped Firestore listeners (only after auth is ready & user exists)
+  // User-scoped Firestore listeners (only after auth user exists)
   useEffect(() => {
     if (!firebaseUser) return;
     const uid = firebaseUser.uid;
     setProfileChecked(false);
+    setAdminChecked(false);
 
     const unsubUser = onSnapshot(
       doc(db, 'users', uid),
@@ -200,7 +325,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setProfileChecked(true);
       },
       (error) => {
-        handleFirestoreError(error, OperationType.GET, `users/${uid}`);
+        console.error('User profile listener error:', error.message);
+        setProfileError(error.message);
+        setProfileChecked(true);
       }
     );
 
@@ -208,9 +335,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       doc(db, 'admins', uid),
       (snap) => {
         setHasAdminDoc(snap.exists());
+        setAdminChecked(true);
       },
       () => {
         setHasAdminDoc(false);
+        setAdminChecked(true);
       }
     );
 
@@ -277,50 +406,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, [firebaseUser]);
 
-  // Ensure bootstrapped admin can seed initial catalog & create admin registry record once
+  // Seed initial catalog when an admin signs in
   useEffect(() => {
     if (!firebaseUser || !isAdmin) return;
-    const ensureAdminBootstrapped = async () => {
-      try {
-        const adminRef = doc(db, 'admins', firebaseUser.uid);
-        const adminSnap = await getDoc(adminRef);
-        if (!adminSnap.exists()) {
-          await setDoc(adminRef, {
-            uid: firebaseUser.uid,
-            email: firebaseUser.email || BOOTSTRAPPED_ADMIN_EMAIL,
-            grantedBy: 'bootstrap',
-            createdAt: serverTimestamp(),
-          });
-        }
-        await seedInitialCatalogIfAdmin(firebaseUser.uid);
-      } catch (err) {
-        console.warn('Admin bootstrap check:', err);
-      }
-    };
-    void ensureAdminBootstrapped();
+    void seedInitialCatalogIfAdmin(firebaseUser.uid).catch((err) => {
+      console.warn('Admin catalog seed check:', err);
+    });
   }, [firebaseUser, isAdmin]);
 
-  const signInWithGoogle = async () => {
-    const result = await signInWithPopup(auth, googleProvider);
-    const u = result.user;
-    const userRef = doc(db, 'users', u.uid);
-    const snap = await getDoc(userRef);
-    if (!snap.exists()) {
-      await setDoc(userRef, {
-        uid: u.uid,
-        fullName: (u.displayName || u.email?.split('@')[0] || 'Pet Parent').slice(
-          0,
-          SCHEMA_LIMITS.FULL_NAME_MAX
-        ),
-        email: (u.email || '').slice(0, SCHEMA_LIMITS.EMAIL_MAX),
-        phone: '',
-        city: 'Dehradun',
-        photoUrl: u.photoURL || '',
-        role: 'customer',
-        status: 'active',
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
+  const signInWithGoogle = async (): Promise<'popup' | 'redirect'> => {
+    try {
+      const result = await signInWithPopup(auth, googleProvider);
+      await ensureCustomerProfile(result.user);
+      setLastAuthEvent({ type: 'login', seq: Date.now() });
+      return 'popup';
+    } catch (err: unknown) {
+      const code =
+        typeof err === 'object' && err !== null && 'code' in err
+          ? String((err as { code?: unknown }).code)
+          : '';
+      if (
+        code === 'auth/popup-blocked' ||
+        code === 'auth/operation-not-supported-in-this-browser'
+      ) {
+        await signInWithRedirect(auth, googleProvider);
+        return 'redirect';
+      }
+      throw err;
     }
   };
 
@@ -340,27 +452,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signInWithEmail = async (email: string, password: string) => {
     const cred = await signInWithEmailAndPassword(auth, email, password);
-    const u = cred.user;
-    if (u.emailVerified) {
-      const userRef = doc(db, 'users', u.uid);
-      const snap = await getDoc(userRef);
-      if (!snap.exists()) {
-        await setDoc(userRef, {
-          uid: u.uid,
-          fullName: (u.displayName || u.email?.split('@')[0] || 'Pet Parent').slice(
-            0,
-            SCHEMA_LIMITS.FULL_NAME_MAX
-          ),
-          email: (u.email || '').slice(0, SCHEMA_LIMITS.EMAIL_MAX),
-          phone: '',
-          city: 'Dehradun',
-          photoUrl: u.photoURL || '',
-          role: 'customer',
-          status: 'active',
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        });
-      }
+    if (cred.user.emailVerified) {
+      await ensureCustomerProfile(cred.user);
+      setLastAuthEvent({ type: 'login', seq: Date.now() });
     }
   };
 
@@ -376,6 +470,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signOutUser = async () => {
     await signOut(auth);
+    setHasAdminDoc(false);
+    setHasAdminClaim(false);
+    setUserProfile(null);
+    setProfileError(null);
+    setLastAuthEvent({ type: 'logout', seq: Date.now() });
+  };
+
+  const retryProfileSetup = async () => {
+    if (!auth.currentUser) return;
+    await ensureCustomerProfile(auth.currentUser);
+  };
+
+  const attemptOwnerAdminVerification = async (): Promise<boolean> => {
+    if (!firebaseUser || !firebaseUser.emailVerified || !firebaseUser.email) {
+      return false;
+    }
+    try {
+      const ok = await verifyOwnerAdminRecord({
+        uid: firebaseUser.uid,
+        email: firebaseUser.email,
+      });
+      if (ok) {
+        setHasAdminDoc(true);
+      }
+      return ok;
+    } catch {
+      return false;
+    }
   };
 
   const completeOnboarding = async (params: {
@@ -417,6 +539,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           updatedAt: serverTimestamp(),
         });
       }
+      setProfileError(null);
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, `users/${uid}`);
     }
@@ -457,6 +580,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         effectiveRole,
         needsOnboarding,
         authReady,
+        roleReady,
+        profileError,
+        lastAuthEvent,
         services,
         servicesLoadedFromDb,
         websiteContent,
@@ -470,6 +596,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         sendPasswordReset,
         resendVerificationEmail,
         signOutUser,
+        retryProfileSetup,
+        attemptOwnerAdminVerification,
         completeOnboarding,
         updateOwnProfile,
       }}

@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { CheckCircle2, Mail, ShieldCheck, X } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { AlertTriangle, CheckCircle2, Mail, RefreshCw, ShieldCheck, X } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { DEHRADUN_AREAS } from '../../lib/defaults';
 import { uploadImageAsset } from '../../lib/firebase';
@@ -10,15 +10,71 @@ interface AuthModalProps {
   onClose: () => void;
 }
 
+function formatFirebaseAuthError(err: unknown): string {
+  const code =
+    typeof err === 'object' && err !== null && 'code' in err
+      ? String((err as { code?: unknown }).code)
+      : '';
+  const msg = err instanceof Error ? err.message : String(err);
+
+  if (code === 'auth/popup-closed-by-user' || msg.includes('popup-closed')) {
+    return 'Google sign-in was cancelled before completion.';
+  }
+  if (code === 'auth/cancelled-popup-request') {
+    return 'Previous sign-in pop-up was replaced. Please try again.';
+  }
+  if (code === 'auth/popup-blocked') {
+    return 'Your browser blocked the sign-in pop-up. Redirecting to Google Sign-In...';
+  }
+  if (code === 'auth/unauthorized-domain' || msg.includes('unauthorized-domain')) {
+    return 'This preview or deployment domain is not listed under Firebase Console → Authentication → Settings → Authorized domains.';
+  }
+  if (
+    code === 'auth/account-exists-with-different-credential' ||
+    msg.includes('account-exists-with-different-credential')
+  ) {
+    return 'An account already exists with this email using Email/Password. Please sign in with your password first (or reset it if needed).';
+  }
+  if (code === 'auth/network-request-failed' || msg.includes('network-request-failed')) {
+    return 'Network error while reaching Google Authentication. Please check your connection and retry.';
+  }
+  if (code === 'auth/user-disabled' || msg.includes('user-disabled')) {
+    return 'This account has been disabled. Please contact PawCare support for assistance.';
+  }
+  if (code === 'auth/operation-not-allowed' || msg.includes('operation-not-allowed')) {
+    return 'This sign-in provider is not enabled yet in Firebase Console → Authentication → Sign-in method.';
+  }
+  if (
+    code === 'auth/invalid-credential' ||
+    code === 'auth/wrong-password' ||
+    code === 'auth/user-not-found' ||
+    msg.includes('invalid-credential')
+  ) {
+    return 'Invalid email or password. Please verify your credentials or reset your password.';
+  }
+  if (code === 'auth/email-already-in-use') {
+    return 'An account with this email already exists. Please sign in or click Continue with Google.';
+  }
+  if (code === 'auth/weak-password') {
+    return 'Password should be at least 6 characters long.';
+  }
+  if (code === 'auth/too-many-requests') {
+    return 'Too many sign-in attempts. Please wait a moment and try again.';
+  }
+  return msg || 'Authentication failed. Please try again.';
+}
+
 export function AuthModal({ open, initialMode = 'login', onClose }: AuthModalProps) {
   const {
     firebaseUser,
     needsOnboarding,
+    profileError,
     signInWithGoogle,
     signUpWithEmail,
     signInWithEmail,
     sendPasswordReset,
     resendVerificationEmail,
+    retryProfileSetup,
     completeOnboarding,
   } = useAuth();
 
@@ -33,18 +89,30 @@ export function AuthModal({ open, initialMode = 'login', onClose }: AuthModalPro
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
 
-  if (!open && !needsOnboarding) return null;
+  useEffect(() => {
+    if (open) {
+      setMode(initialMode);
+      setError('');
+      setNotice('');
+    }
+  }, [open, initialMode]);
+
+  const showProfileRetry = Boolean(firebaseUser && firebaseUser.emailVerified && profileError);
+
+  if (!open && !needsOnboarding && !showProfileRetry) return null;
 
   const handleGoogle = async () => {
     setError('');
     setNotice('');
     setBusy(true);
     try {
-      await signInWithGoogle();
-      onClose();
+      const flow = await signInWithGoogle();
+      if (flow === 'popup') {
+        onClose();
+      }
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      setError(msg.includes('popup-closed') ? 'Google sign-in was cancelled.' : msg);
+      console.error('Google authentication error:', err);
+      setError(formatFirebaseAuthError(err));
     } finally {
       setBusy(false);
     }
@@ -70,23 +138,15 @@ export function AuthModal({ open, initialMode = 'login', onClose }: AuthModalPro
           phone: phone.trim(),
         });
         setNotice(
-          'Account created! A verification link has been sent to your email. Please verify your email before creating bookings.'
+          'Account created! A verification link has been sent to your email. Please verify your email to unlock your Customer Dashboard.'
         );
       } else {
         await signInWithEmail(email.trim(), password);
         onClose();
       }
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      if (msg.includes('auth/operation-not-allowed')) {
-        setError(
-          'Email/Password sign-in is not yet enabled in Firebase Console (Authentication → Sign-in method → Email/Password). Please use Continue with Google or enable Email/Password in Firebase Console.'
-        );
-      } else if (msg.includes('auth/invalid-credential')) {
-        setError('Invalid email or password. Please verify your credentials or reset your password.');
-      } else {
-        setError(msg);
-      }
+      console.error('Email authentication error:', err);
+      setError(formatFirebaseAuthError(err));
     } finally {
       setBusy(false);
     }
@@ -126,6 +186,57 @@ export function AuthModal({ open, initialMode = 'login', onClose }: AuthModalPro
     }
   };
 
+  // Profile initialization failure retry banner
+  if (showProfileRetry) {
+    return (
+      <div className="fixed inset-0 z-50 bg-black/45 backdrop-blur-xs flex items-center justify-center p-4">
+        <div className="max-w-md w-full bg-white border border-[#E6E2D8] rounded-2xl p-6 space-y-4 shadow-xl">
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex items-center gap-2.5 text-amber-800">
+              <AlertTriangle className="w-5 h-5" />
+              <h2 className="text-lg font-semibold font-display">
+                Complete Customer Profile Setup
+              </h2>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close"
+              className="p-1.5 rounded-lg text-[#526057] hover:bg-[#FAF8F4] cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+          <p className="text-sm text-[#445249] leading-relaxed">
+            Your Google/Firebase sign-in succeeded, but we could not finish saving your PawCare customer profile yet. Please retry to open your dashboard.
+          </p>
+          {profileError && (
+            <p className="text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded-xl p-3">
+              {profileError}
+            </p>
+          )}
+          <button
+            type="button"
+            disabled={busy}
+            onClick={async () => {
+              setBusy(true);
+              try {
+                await retryProfileSetup();
+                onClose();
+              } finally {
+                setBusy(false);
+              }
+            }}
+            className="w-full inline-flex items-center justify-center gap-2 py-2.5 rounded-xl bg-[#1B4332] text-white text-sm font-semibold hover:bg-[#143326] disabled:opacity-60 cursor-pointer"
+          >
+            <RefreshCw className={`w-4 h-4 ${busy ? 'animate-spin' : ''}`} />
+            {busy ? 'Retrying Setup...' : 'Retry Profile Setup'}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   // Unverified email user banner inside modal
   if (firebaseUser && !firebaseUser.emailVerified) {
     return (
@@ -147,7 +258,7 @@ export function AuthModal({ open, initialMode = 'login', onClose }: AuthModalPro
           </div>
           <p className="text-sm text-[#445249] leading-relaxed">
             We sent a verification link to <span className="font-semibold">{firebaseUser.email}</span>.
-            Please verify your email address, then reload or sign in again to submit bookings and manage pet profiles.
+            Please verify your email address, then click below to enter your Customer Dashboard.
           </p>
           {notice && (
             <p className="text-xs text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-xl p-3">
@@ -181,7 +292,7 @@ export function AuthModal({ open, initialMode = 'login', onClose }: AuthModalPro
     );
   }
 
-  // First-login profile completion
+  // First-login profile completion (only if city is missing)
   if (firebaseUser && needsOnboarding) {
     return (
       <div className="fixed inset-0 z-50 bg-black/45 backdrop-blur-xs flex items-center justify-center p-4">
@@ -292,7 +403,7 @@ export function AuthModal({ open, initialMode = 'login', onClose }: AuthModalPro
                 : 'Sign In to PawCare'}
             </h2>
             <p className="text-xs text-[#526057] mt-1">
-              Trusted care for your pets in Dehradun.
+              Instant self-registration for pet parents across Dehradun.
             </p>
           </div>
           <button
@@ -305,7 +416,7 @@ export function AuthModal({ open, initialMode = 'login', onClose }: AuthModalPro
           </button>
         </div>
 
-        {/* Google Auth (Primary Mandatory Provider) */}
+        {/* Google Auth (Open Self-Registration & Returning Customer Login) */}
         <button
           type="button"
           disabled={busy}
@@ -330,7 +441,7 @@ export function AuthModal({ open, initialMode = 'login', onClose }: AuthModalPro
               d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.31 0 3.26 2.7 1.29 6.62l3.99 3.14c.95-2.85 3.6-4.96 6.72-4.96Z"
             />
           </svg>
-          Continue with Google
+          {busy ? 'Connecting to Google...' : 'Continue with Google'}
         </button>
 
         <div className="relative flex items-center py-1">

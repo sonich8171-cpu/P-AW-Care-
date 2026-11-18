@@ -11,6 +11,7 @@ import {
   MessageSquare,
   Plus,
   Send,
+  Shield,
   ShieldAlert,
   UserCheck,
   Users,
@@ -33,6 +34,8 @@ import {
 import { db, handleFirestoreError, OperationType } from '../../lib/firebase';
 import {
   adminAssignCaregiverToBooking,
+  adminGrantAdminAccess,
+  adminRevokeAdminAccess,
   adminReviewCaregiverApplication,
   adminSaveServiceAndPricing,
   adminSaveWebsiteContent,
@@ -43,6 +46,7 @@ import {
   sendConversationMessage,
 } from '../../lib/firestoreService';
 import type {
+  AppView,
   AuditLog,
   Booking,
   BookingStatus,
@@ -59,25 +63,42 @@ import type {
 } from '../../types/pawcare';
 import { AnimatedCounter, PageReveal } from '../ui/MotionPrimitives';
 
+interface AdminRegistryEntry {
+  uid: string;
+  email: string;
+  grantedBy: string;
+}
+
 type AdminTab =
   | 'overview'
   | 'bookings'
   | 'caregivers'
   | 'customers'
+  | 'admins'
   | 'services'
   | 'support'
   | 'reports'
   | 'website'
   | 'audit';
 
-export function AdminDashboard() {
-  const { firebaseUser, userProfile, isAdmin, websiteContent } = useAuth();
+export function AdminDashboard({ onNavigate }: { onNavigate?: (view: AppView) => void }) {
+  const {
+    firebaseUser,
+    userProfile,
+    isAdmin,
+    roleReady,
+    websiteContent,
+    attemptOwnerAdminVerification,
+  } = useAuth();
   const [tab, setTab] = useState<AdminTab>('overview');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [verifyingAdmin, setVerifyingAdmin] = useState(false);
+  const [verifyMsg, setVerifyMsg] = useState('');
 
   // Live collections
   const [users, setUsers] = useState<UserProfile[]>([]);
+  const [adminEntries, setAdminEntries] = useState<AdminRegistryEntry[]>([]);
   const [applications, setApplications] = useState<CaregiverApplication[]>([]);
   const [caregivers, setCaregivers] = useState<CaregiverPublicProfile[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -130,6 +151,12 @@ export function AdminDashboard() {
       collection(db, 'users'),
       (snap) => setUsers(snap.docs.map((d) => d.data() as UserProfile)),
       (err) => handleFirestoreError(err, OperationType.LIST, 'users')
+    );
+
+    const unsubAdmins = onSnapshot(
+      collection(db, 'admins'),
+      (snap) => setAdminEntries(snap.docs.map((d) => d.data() as AdminRegistryEntry)),
+      () => setAdminEntries([])
     );
 
     const unsubApps = onSnapshot(
@@ -218,6 +245,7 @@ export function AdminDashboard() {
 
     return () => {
       unsubUsers();
+      unsubAdmins();
       unsubApps();
       unsubCg();
       unsubBookings();
@@ -246,6 +274,14 @@ export function AdminDashboard() {
     });
   }, [selectedConvId, isAdmin]);
 
+  if (!roleReady) {
+    return (
+      <div className="max-w-xl mx-auto px-4 py-20 text-center text-sm text-[#526057]">
+        Verifying your PawCare permissions...
+      </div>
+    );
+  }
+
   if (!firebaseUser || !isAdmin) {
     return (
       <PageReveal className="max-w-xl mx-auto px-4 py-16 text-center space-y-4">
@@ -253,9 +289,45 @@ export function AdminDashboard() {
         <h1 className="font-display text-2xl font-bold text-[#1A221D]">
           Administrator Access Required
         </h1>
-        <p className="text-sm text-[#526057]">
+        <p className="text-sm text-[#526057] leading-relaxed">
           This control center is protected by server-verified Firestore admin rules and is restricted to authorized PawCare administrators.
         </p>
+        {verifyMsg && (
+          <p className="text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded-xl p-3">
+            {verifyMsg}
+          </p>
+        )}
+        <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+          {onNavigate && (
+            <button
+              type="button"
+              onClick={() => onNavigate(firebaseUser ? 'customer-portal' : 'home')}
+              className="px-5 py-2.5 rounded-xl bg-[#1B4332] text-white text-sm font-semibold hover:bg-[#143326] cursor-pointer"
+            >
+              {firebaseUser ? 'Return to My Dashboard' : 'Back to Home'}
+            </button>
+          )}
+          {firebaseUser && (
+            <button
+              type="button"
+              disabled={verifyingAdmin}
+              onClick={async () => {
+                setVerifyingAdmin(true);
+                setVerifyMsg('');
+                const ok = await attemptOwnerAdminVerification();
+                if (!ok) {
+                  setVerifyMsg(
+                    'Your account is not listed in the server-side admins registry.'
+                  );
+                }
+                setVerifyingAdmin(false);
+              }}
+              className="px-4 py-2.5 rounded-xl border border-[#D4CFC4] bg-white text-xs font-semibold text-[#445249] hover:bg-[#FAF8F4] cursor-pointer"
+            >
+              {verifyingAdmin ? 'Checking...' : 'Verify Admin Authorization'}
+            </button>
+          )}
+        </div>
       </PageReveal>
     );
   }
@@ -451,6 +523,7 @@ export function AdminDashboard() {
     { id: 'bookings', label: 'Bookings', icon: <Calendar className="w-4 h-4" />, badge: pendingBookingsCount },
     { id: 'caregivers', label: 'Caregivers', icon: <UserCheck className="w-4 h-4" />, badge: pendingApps.length },
     { id: 'customers', label: 'Customers', icon: <Users className="w-4 h-4" /> },
+    { id: 'admins', label: 'Admin Access', icon: <Shield className="w-4 h-4" /> },
     { id: 'services', label: 'Services & Pricing', icon: <IndianRupee className="w-4 h-4" /> },
     { id: 'support', label: 'Support Inbox', icon: <MessageSquare className="w-4 h-4" />, badge: supportConvs.filter((c) => c.status !== 'resolved').length },
     { id: 'reports', label: 'Reports', icon: <BarChart3 className="w-4 h-4" /> },
@@ -1058,6 +1131,123 @@ export function AdminDashboard() {
                   )}
                 </div>
               )}
+            </div>
+          )}
+
+          {/* ADMIN ACCESS MANAGEMENT */}
+          {tab === 'admins' && (
+            <div className="space-y-6">
+              <div>
+                <h2 className="font-display text-2xl font-bold text-[#1A221D]">
+                  Admin Access Control
+                </h2>
+                <p className="text-xs text-[#526057]">
+                  Admin privileges are enforced server-side via the Firestore admins registry. Customers can never promote themselves.
+                </p>
+              </div>
+
+              <div className="rounded-2xl border border-[#E6E2D8] bg-white p-5 space-y-3">
+                <h3 className="font-semibold text-sm text-[#1A221D]">
+                  Authorized Administrators ({adminEntries.length})
+                </h3>
+                {adminEntries.length === 0 ? (
+                  <p className="text-xs text-[#526057]">
+                    No explicit entries in /admins yet.
+                  </p>
+                ) : (
+                  <div className="divide-y divide-[#EFECE4] text-xs">
+                    {adminEntries.map((entry) => (
+                      <div
+                        key={entry.uid}
+                        className="py-2.5 flex flex-wrap items-center justify-between gap-2"
+                      >
+                        <div>
+                          <div className="font-semibold text-[#1A221D]">{entry.email}</div>
+                          <div className="font-mono text-[11px] text-[#526057]">
+                            UID: {entry.uid} · Granted by: {entry.grantedBy}
+                          </div>
+                        </div>
+                        {entry.uid !== firebaseUser.uid ? (
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              setError('');
+                              setNotice('');
+                              try {
+                                await adminRevokeAdminAccess({
+                                  targetUid: entry.uid,
+                                  targetEmail: entry.email,
+                                  adminUid: firebaseUser.uid,
+                                  adminEmail,
+                                });
+                                setNotice(`Revoked admin privileges for ${entry.email}.`);
+                              } catch (err: unknown) {
+                                setError(
+                                  err instanceof Error ? err.message : 'Unable to revoke admin.'
+                                );
+                              }
+                            }}
+                            className="px-3 py-1.5 rounded-lg border border-rose-200 text-rose-700 font-semibold hover:bg-rose-50 cursor-pointer"
+                          >
+                            Revoke Admin
+                          </button>
+                        ) : (
+                          <span className="text-[11px] font-mono text-[#2D6A4F]">Current Session</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="rounded-2xl border border-[#E6E2D8] bg-white p-5 space-y-3">
+                <h3 className="font-semibold text-sm text-[#1A221D]">
+                  Promote Registered Account to Admin
+                </h3>
+                <div className="divide-y divide-[#EFECE4] text-xs">
+                  {users
+                    .filter(
+                      (u) =>
+                        u.status === 'active' &&
+                        !adminEntries.some((a) => a.uid === u.uid) &&
+                        u.uid !== firebaseUser.uid
+                    )
+                    .map((u) => (
+                      <div
+                        key={u.uid}
+                        className="py-2.5 flex flex-wrap items-center justify-between gap-2"
+                      >
+                        <div>
+                          <span className="font-semibold text-[#1A221D]">{u.fullName}</span>{' '}
+                          <span className="text-[#526057]">({u.email})</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            setError('');
+                            setNotice('');
+                            try {
+                              await adminGrantAdminAccess({
+                                targetUid: u.uid,
+                                targetEmail: u.email,
+                                adminUid: firebaseUser.uid,
+                                adminEmail,
+                              });
+                              setNotice(`Granted admin access to ${u.email}.`);
+                            } catch (err: unknown) {
+                              setError(
+                                err instanceof Error ? err.message : 'Unable to grant admin.'
+                              );
+                            }
+                          }}
+                          className="px-3 py-1.5 rounded-lg bg-[#1B4332] text-white font-semibold cursor-pointer"
+                        >
+                          Grant Admin Access
+                        </button>
+                      </div>
+                    ))}
+                </div>
+              </div>
             </div>
           )}
 

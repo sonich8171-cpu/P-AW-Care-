@@ -248,7 +248,7 @@ export interface AuditLog {
   createdAt: Timestamp;
 }
 
-export type GameId = 'paw_runner' | 'paw_memory' | 'treat_catcher';
+export type GameId = 'paw_runner' | 'paw_memory' | 'treat_catcher' | 'pet_rescue';
 
 export interface GameSession {
   id: string;
@@ -269,6 +269,7 @@ export interface RewardProfile {
   bestRunnerScore: number;
   bestMemoryScore: number;
   bestCatcherScore: number;
+  bestRescueScore?: number;
   achievements: string[];
   streakDays: number;
   lastPlayedDate: string;

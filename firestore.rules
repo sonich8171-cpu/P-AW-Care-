@@ -266,7 +266,7 @@ service cloud.firestore {
       return data.keys().hasAll(['uid', 'gameId', 'score', 'pointsAwarded', 'durationSec', 'won', 'createdAt'])
         && data.keys().hasOnly(['uid', 'gameId', 'score', 'pointsAwarded', 'durationSec', 'difficulty', 'won', 'createdAt'])
         && isValidId(data.uid)
-        && data.gameId in ['paw_runner', 'paw_memory', 'treat_catcher']
+        && data.gameId in ['paw_runner', 'paw_memory', 'treat_catcher', 'pet_rescue']
         && data.score is int && data.score >= 0 && data.score <= 50000
         && data.pointsAwarded is int && data.pointsAwarded >= 0 && data.pointsAwarded <= 150
         && data.durationSec is int && data.durationSec >= 3 && data.durationSec <= 3600
@@ -277,7 +277,7 @@ service cloud.firestore {
 
     function isValidRewardProfile(data, userId) {
       return data.keys().hasAll(['uid', 'totalPoints', 'gamesPlayed', 'bestRunnerScore', 'bestMemoryScore', 'bestCatcherScore', 'achievements', 'streakDays', 'lastPlayedDate', 'updatedAt'])
-        && data.keys().hasOnly(['uid', 'totalPoints', 'gamesPlayed', 'bestRunnerScore', 'bestMemoryScore', 'bestCatcherScore', 'achievements', 'streakDays', 'lastPlayedDate', 'updatedAt'])
+        && data.keys().hasOnly(['uid', 'totalPoints', 'gamesPlayed', 'bestRunnerScore', 'bestMemoryScore', 'bestCatcherScore', 'bestRescueScore', 'achievements', 'streakDays', 'lastPlayedDate', 'updatedAt'])
         && data.uid == userId
         && isValidId(data.uid)
         && data.totalPoints is int && data.totalPoints >= 0 && data.totalPoints <= 1000000
@@ -285,6 +285,7 @@ service cloud.firestore {
         && data.bestRunnerScore is int && data.bestRunnerScore >= 0 && data.bestRunnerScore <= 50000
         && data.bestMemoryScore is int && data.bestMemoryScore >= 0 && data.bestMemoryScore <= 50000
         && data.bestCatcherScore is int && data.bestCatcherScore >= 0 && data.bestCatcherScore <= 50000
+        && (!('bestRescueScore' in data) || (data.bestRescueScore is int && data.bestRescueScore >= 0 && data.bestRescueScore <= 50000))
         && data.achievements is list && data.achievements.size() <= 20 && (data.achievements.size() == 0 || data.achievements[0] is string)
         && data.streakDays is int && data.streakDays >= 0 && data.streakDays <= 3650
         && data.lastPlayedDate is string && data.lastPlayedDate.size() <= 20
@@ -660,6 +661,7 @@ service cloud.firestore {
             && incoming().bestRunnerScore >= existing().bestRunnerScore
             && incoming().bestMemoryScore >= existing().bestMemoryScore
             && incoming().bestCatcherScore >= existing().bestCatcherScore
+            && (!('bestRescueScore' in existing()) || incoming().bestRescueScore >= existing().bestRescueScore)
           )
         );
       allow delete: if false;
